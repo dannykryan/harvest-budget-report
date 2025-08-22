@@ -1,6 +1,4 @@
 // This script should be ran in Google Apps Script
-// to run from the terminal in VS code, use clasp command:
-// 'clasp run createBudgetReport
 
 // Development Settings
 let folderId = "1QylzuhBPTSst8o6mSQhqru0PsrOz1iu9";
