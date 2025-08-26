@@ -1,9 +1,9 @@
 // This script should be ran in Google Apps Script
 
 // Development Settings
-let folderId = "1QylzuhBPTSst8o6mSQhqru0PsrOz1iu9";
+let folderId = "1234uhBPTSst8o6mSQhqru0PsrOzABCD"; // Replace with your Google Drive folder ID for testing
 let recipientEmails = [
-  "danny.ryan@marketingpod.com"
+  "dannykryan@gmail.com" // Replace with your email for testing
 ];
 
 // Api urls
