@@ -2,6 +2,12 @@
 
 This Google Apps Script automates the generation of budget and rework reports for projects using data from the Harvest API. It creates a multi-tabbed Google Sheet summarizing project budgets, rework, client totals, and more, and emails a link to the recipients. The script can be run manually or scheduled to run automatically.
 
+This project has now been updated to work with dummy data for testing when a Harvest account ID and access token has not been supplied.
+
+---
+Screenshot:
+<img width="1869" height="493" alt="image" src="https://github.com/user-attachments/assets/0a7d4782-bf54-4ec0-933e-7120abc1c8db" />
+
 ---
 
 ## Table of Contents
@@ -120,13 +126,14 @@ Set the following script properties in Google Apps Script (`File > Project prope
 
 - `harvestAccessToken`: Your Harvest API access token.
 - `harvestAccountID`: Your Harvest account ID.
+- `recipientEmail`: Your email/the email you want to receive the report.
+- `outputFolderId`: the ID of a Googel Drive folder you have editing rights to where the report can be created. 
 
 ### Folder and Recipients
 
 - **Production/Development:**  
-  Set the correct `folderId` and `recipientEmails` at the top of the script for production or development use.
-  
-  If you are working on this project for the first time, update the 'Development Settings' at the top of the script so that the `recipientEmails` includes your own email and the `folderId` is the ID of a Google Drive folder that you own.
+  The project is now supplied with Dummy data which can be used for testing when you dont have access to a Harvest account ID opr access token.
+  You will still need to provide a Google Drive folder ID and email address which can be set in the 'Script Properties' section of the script near the top of the main 'productionScript.gs' file.   
 
 ---
 
@@ -190,19 +197,6 @@ The script can be scheduled to run automatically (e.g., monthly):
 
 ---
 
-## Adding/Removing Recipients
-
-To add or remove report recipients, update the `recipientEmails` array at the top of the script:
-
-```javascript
-let recipientEmails = [
-  "danny.ryan@marketingpod.com"
-  // Add or remove emails here
-];
-```
-
----
-
 ## API Integration
 
 - **Harvest:**  
@@ -225,6 +219,6 @@ All API calls use secure tokens stored in script properties.
 - **To add new report categories or sheets:**  
   Create new functions similar to the existing `populate*Sheet` functions.
 - **To change email recipients or folder:**  
-  Update the `recipientEmails` array and `folderId` variable at the top of the script.
+  Update the `recipientEmail` and/or `outputFolderId` script properties in the project settings once copied over to Google Apps Script.
 - **To change the reporting period:**  
   Adjust the date logic near the top of the script.
