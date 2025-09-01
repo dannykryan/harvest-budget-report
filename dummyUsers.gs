@@ -1,6 +1,5 @@
 function getDummyUsers() {
-  return {
-    "users": [
+    const usersArray = [
       {
         "id": 101,
         "first_name": "Alice",
@@ -277,6 +276,11 @@ function getDummyUsers() {
         "permissions_claims": ["projects:read:managed", "timers:read:managed"],
         "avatar_url": "https://dummy.com/avatar/leo.png"
       }
-    ]
-  };
+    ];
+    const usersObj = {};
+    usersArray.forEach(user => {
+        usersObj[user.id] = user;
+    });
+
+  return usersArray;
 }

@@ -1,6 +1,6 @@
 function getDummyTimeEntries() {
-  const projects = getDummyProjects().projects;
-  const users = getDummyUsers().users;
+  const projects = getDummyProjects();
+  const users = getDummyUsers();
 
   // Get current financial year start and end
   const currentDate = new Date();

@@ -4,7 +4,6 @@
 const budgetReportApi = "https://api.harvestapp.com/v2/reports/project_budget?&per_page=2000";
 const usersApiUrl = "https://api.harvestapp.com/v2/users";
 const rolesApiUrl = "https://api.harvestapp.com/v2/roles";
-const invoicesApiUrl = `https://api.harvestapp.com/v2/invoices`;
 // projectApiUrl and timeEntriesApiUrl will require a project ID appended
 const projectApiUrl = "https://api.harvestapp.com/v2/projects/";
 const timeEntriesApiUrl = "https://api.harvestapp.com/v2/time_entries?project_id=";
@@ -84,18 +83,30 @@ async function createBudgetReport() {
     Logger.log(`Active projects example: ${JSON.stringify(activeProjects[0])}`);
 
     const archivedProjects = Object.values(allProjects).filter((project) => !project.is_active);
+
+    Logger.log(`Archived projects count: ${archivedProjects.length}`);
+    Logger.log(`Archived projects example: ${JSON.stringify(archivedProjects[0])}`);
+
     const archivedProjectsWithStartDate = archivedProjects.filter((project) => {
       const startDate = new Date(project.starts_on);
       return startDate >= currentFY.start && startDate <= currentFY.end;
     });
+
+    Logger.log(`Archived projects with start date count: ${archivedProjectsWithStartDate.length}`);
+    Logger.log(`Archived projects with start date example: ${JSON.stringify(archivedProjectsWithStartDate[0])}`);
+
     const archivedProjectsWithEndDate = archivedProjects.filter((project) => {
       const endDate = new Date(project.ends_on);
       return endDate >= currentFY.start && endDate <= currentFY.end;
     });
 
+    Logger.log(`Archived projects with end date count: ${archivedProjectsWithEndDate.length}`);
+    Logger.log(`Archived projects with end date example: ${JSON.stringify(archivedProjectsWithEndDate[0])}`);
+
     await fetchAllTimeEntriesFY();
 
-    // Logger.log(`allTimeEntriesFY count: ${Object.keys(allTimeEntriesFY).length}`);
+    Logger.log(`allTimeEntriesFY keys count: ${Object.keys(allTimeEntriesFY).length}`);
+    Logger.log(`allTimeEntriesFY example: ${JSON.stringify(allTimeEntriesFY[Object.keys(allTimeEntriesFY)[0]])}`);
 
     // get list of projects which have time logged to it during the financial year
     const projectsWithTimeLogged = Object.values(allTimeEntriesFY).reduce((acc, entries) => {
@@ -259,10 +270,20 @@ async function fetchAllTimeEntriesFY() {
       Logger.log("Error fetching all time entries: " + error.message);
     }
   } else {
+    Logger.log("Using dummy data for time entries");
     // Use dummy data for development/testing
-    allTimeEntriesFY = getDummyTimeEntries();
+    const dummyEntries = getDummyTimeEntries().time_entries;
+    Logger.log(`Dummy entries count: ${dummyEntries.length}`);
+    Logger.log(`Dummy entries example: ${JSON.stringify(dummyEntries[0])}`);
+    allTimeEntriesFY = {};
+    dummyEntries.forEach((entry) => {
+      const projectId = entry.project.id;
+      if (!allTimeEntriesFY[projectId]) {
+        allTimeEntriesFY[projectId] = [];
+      }
+      allTimeEntriesFY[projectId].push(entry);
+    });
   }
-  
 }
 
 // Get the Budget Report data
@@ -393,8 +414,14 @@ async function getProjectDetails(projectId, users, roles, reportableProjects) {
     // Retrieve time entries for each reportable project - by calling the timeEntries API for each project id
     // Do we still want to get the totals for the financial year as well? YES
 
-    const timeEntriesData = await fetchAllPages({ url: `https://api.harvestapp.com/v2/time_entries?project_id=${projectId}` });
-    const timeEntries = timeEntriesData[0].time_entries || [];
+    let timeEntries = [];
+    if (accessToken && accountId) {
+      const timeEntriesData = await fetchAllPages({ url: timeEntriesApiUrl + projectId });
+      timeEntries = timeEntriesData[0].time_entries || [];
+    } else {
+      // Use dummy data from global allTimeEntriesFY
+      timeEntries = allTimeEntriesFY[projectId] || [];
+    }
 
     if (timeEntries === null) return null;
 
@@ -1262,27 +1289,35 @@ function projectTypeRename(projectBudgetBy) {
 }
 
 function fetchInvoicesByProjectId(projectId) {
-  try {
-    const url = invoiceApiUrl + projectId;
-    const options = {
-      method: "get",
-      headers: headers,
-      muteHttpExceptions: true,
-    };
+  if (accessToken && accountId) {
+    try {
+      const url = invoiceApiUrl + projectId;
+      const options = {
+        method: "get",
+        headers: headers,
+        muteHttpExceptions: true,
+      };
 
-    // Use UrlFetchApp.fetch for synchronous behavior
-    const response = UrlFetchApp.fetch(url, options);
+      // Use UrlFetchApp.fetch for synchronous behavior
+      const response = UrlFetchApp.fetch(url, options);
 
-    // Parse the response as JSON
-    const jsonResponse = JSON.parse(response.getContentText());
+      // Parse the response as JSON
+      const jsonResponse = JSON.parse(response.getContentText());
 
-    const projectInvoices = jsonResponse.invoices.map((invoice) => invoice.number);
+      const projectInvoices = jsonResponse.invoices.map((invoice) => invoice.number);
 
-    return projectInvoices;
-  } catch (error) {
-    Logger.log(`Error fetching invoices for project ${projectId}: ${error.message}`);
-    // Instead of returning null, return an empty array so the rest of the code can continue.
-    return [];
+      return projectInvoices;
+    } catch (error) {
+      Logger.log(`Error fetching invoices for project ${projectId}: ${error.message}`);
+      // Instead of returning null, return an empty array so the rest of the code can continue.
+      return [];
+    }
+  } else {
+    // Use dummy data if no credentials
+    const invoicesArray = getDummyinvoices();
+    return invoicesArray
+      .filter(invoice => invoice.project_id === projectId)
+      .map(invoice => invoice.number);
   }
 }
 
