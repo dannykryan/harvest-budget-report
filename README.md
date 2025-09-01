@@ -29,8 +29,6 @@ Screenshot:
 
 ## Breakdown of spreadsheets created
 
-> **Note:** Note: At The Marketing Pod, the financial year is defined as starting on the 1st April NOT the 6th April.
-
 Running the script will produce a multi-tabbed Google Sheet with the following reports:
 
 - **Over Budget Projects:**  
