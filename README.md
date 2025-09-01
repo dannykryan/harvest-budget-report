@@ -6,7 +6,7 @@ The project has now been updated to work with dummy data for testing when a Harv
 
 ---
 Screenshot:
-<img width="1869" height="493" alt="image" src="https://github.com/user-attachments/assets/0a7d4782-bf54-4ec0-933e-7120abc1c8db" />
+<img width="1869" height="686" alt="image" src="https://github.com/user-attachments/assets/17ae874c-35d0-44d5-9474-842913dbe0fa" />
 
 The project has now been updated to work with dummy data for testing when a Harvest account ID and access token has not been supplied.
 
