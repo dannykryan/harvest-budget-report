@@ -1,11 +1,5 @@
 // This script should be ran in Google Apps Script
 
-// Development Settings
-let folderId = "1234uhBPTSst8o6mSQhqru0PsrOzABCD"; // Replace with your Google Drive folder ID for testing
-let recipientEmails = [
-  "dannykryan@gmail.com" // Replace with your email for testing
-];
-
 // Api urls
 const budgetReportApi = "https://api.harvestapp.com/v2/reports/project_budget?&per_page=2000";
 const usersApiUrl = "https://api.harvestapp.com/v2/users";
@@ -18,6 +12,8 @@ const invoiceApiUrl = "https://api.harvestapp.com/v2/invoices?project_id=";
 
 // Script Properties include Harvest token and ID needed for API calls
 const scriptProperties = PropertiesService.getScriptProperties();
+const recipientEmail = scriptProperties.getProperty("recipientEmail");
+const folderId = scriptProperties.getProperty("outputFolderId");
 const accessToken = scriptProperties.getProperty("harvestAccessToken");
 const accountId = scriptProperties.getProperty("harvestAccountID");
 
@@ -63,11 +59,16 @@ let defaultHourlyRate = defaultDayRate / 7.5; // Default hourly rate based on a 
 async function createBudgetReport() {
   try {
     const [rawBudgetData, users, roles, allProjects] = await Promise.all([
-      getBudgetReportData(),
-      getUsers(),
-      getRoles(),
-      fetchAllProjects(), // Fetch all projects
+      accessToken && accountId ? getBudgetReportData() : getDummyBudgetReport(), // Fetch budget report data
+      accessToken && accountId ? getUsers() : getDummyUsers(), // Fetch users
+      accessToken && accountId ? getRoles() : getDummyRoles(), // Fetch roles
+      accessToken && accountId ? fetchAllProjects() : getDummyProjects() // Fetch all projects
     ]);
+
+    Logger.log(`Users count: ${users.users ? users.users.length : users.length}`);
+    Logger.log(`Roles count: ${roles.roles ? roles.roles.length : roles.length}`);
+    Logger.log(`All Projects count: ${allProjects.projects ? allProjects.projects.length : Object.keys(allProjects).length}`);
+    Logger.log(`Budget Report Data count: ${rawBudgetData.results.length}`);
 
     // get list of projects which are:
     // 1. Active
@@ -86,7 +87,7 @@ async function createBudgetReport() {
       return endDate >= currentFY.start && endDate <= currentFY.end;
     });
 
-    await fetchAllTimeEntriesFY();
+    accessToken && accountId ?  await fetchAllTimeEntriesFY() : getDummyTimeEntries();
 
     // Logger.log(`allTimeEntriesFY count: ${Object.keys(allTimeEntriesFY).length}`);
 
@@ -1277,7 +1278,7 @@ function sendEmail(combinedSheetUrl) {
   const subject = "Automated Harvest Budget Report " + formattedDate;
   const body = "Hi Everyone,\n\nPlease find the attached budget report in the Google Sheet: " + combinedSheetUrl + "\n\nAs this is an automated report, please book in any changes.";
   MailApp.sendEmail({
-    to: recipientEmails.join(","),
+    to: recipientEmail,
     subject: subject,
     body: body,
   });
