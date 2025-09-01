@@ -2,7 +2,7 @@
 
 This Google Apps Script automates the generation of budget and rework reports for projects using data from the Harvest API. It creates a multi-tabbed Google Sheet summarizing project budgets, rework, client totals, and more, and emails a link to the recipients. The script can be run manually or scheduled to run automatically.
 
-This project has now been updated to work with dummy data for testing when a Harvest account ID and access token has not been supplied.
+The project has now been updated to work with dummy data for testing when a Harvest account ID and access token has not been supplied.
 
 ---
 Screenshot:
@@ -72,8 +72,6 @@ A project is included in the report if **any** of the following are true:
 - The project is archived but its start date is within the current financial year.
 - The project is archived but its end date is within the current financial year.
 - The project (active or archived) has time logged to it during the current financial year.
-
-> **Note:** Projects for **"Pod"** and **"Pod Marketing"** clients (i.e., internal projects, not client work) are always excluded.
 
 ---
 
