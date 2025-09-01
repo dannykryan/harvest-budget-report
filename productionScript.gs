@@ -9,10 +9,15 @@ const projectApiUrl = "https://api.harvestapp.com/v2/projects/";
 const timeEntriesApiUrl = "https://api.harvestapp.com/v2/time_entries?project_id=";
 const invoiceApiUrl = "https://api.harvestapp.com/v2/invoices?project_id=";
 
-// Script Properties include Harvest token and ID needed for API calls
+// Get script properties
 const scriptProperties = PropertiesService.getScriptProperties();
+
+// Get email and folder ID from script properties
 const recipientEmail = scriptProperties.getProperty("recipientEmail");
 const folderId = scriptProperties.getProperty("outputFolderId");
+
+// Base URL, Access Token and Account ID for Harvest API
+const harvestBaseUrl = scriptProperties.getProperty("harvestBaseUrl") || "https://mycompany.harvestapp.com";
 const accessToken = scriptProperties.getProperty("harvestAccessToken");
 const accountId = scriptProperties.getProperty("harvestAccountID");
 
@@ -64,49 +69,26 @@ async function createBudgetReport() {
       accessToken && accountId ? fetchAllProjects() : getDummyProjects() // Fetch all projects
     ]);
 
-    Logger.log(`Users count: ${users.users ? users.users.length : users.length}`);
-    Logger.log(`Roles count: ${roles.roles ? roles.roles.length : roles.length}`);
-    Logger.log(`All Projects count: ${allProjects.projects ? allProjects.projects.length : Object.keys(allProjects).length}`);
-    Logger.log(`Budget Report Data count: ${rawBudgetData.results.length}`);
-
     // get list of projects which are:
     // 1. Active
     // 2. Archived but have a start or end date within the financial year
     // 3. Archived but have time logged to it during the financial year
-    // 4. Not including Pod (12129858) or Pod Marketing (13980295) and
-
-    Logger.log(allProjects)
 
     const activeProjects = Object.values(allProjects).filter((project) => project.is_active);
 
-    Logger.log(`Active projects count: ${activeProjects.length}`);
-    Logger.log(`Active projects example: ${JSON.stringify(activeProjects[0])}`);
-
     const archivedProjects = Object.values(allProjects).filter((project) => !project.is_active);
-
-    Logger.log(`Archived projects count: ${archivedProjects.length}`);
-    Logger.log(`Archived projects example: ${JSON.stringify(archivedProjects[0])}`);
 
     const archivedProjectsWithStartDate = archivedProjects.filter((project) => {
       const startDate = new Date(project.starts_on);
       return startDate >= currentFY.start && startDate <= currentFY.end;
     });
 
-    Logger.log(`Archived projects with start date count: ${archivedProjectsWithStartDate.length}`);
-    Logger.log(`Archived projects with start date example: ${JSON.stringify(archivedProjectsWithStartDate[0])}`);
-
     const archivedProjectsWithEndDate = archivedProjects.filter((project) => {
       const endDate = new Date(project.ends_on);
       return endDate >= currentFY.start && endDate <= currentFY.end;
     });
 
-    Logger.log(`Archived projects with end date count: ${archivedProjectsWithEndDate.length}`);
-    Logger.log(`Archived projects with end date example: ${JSON.stringify(archivedProjectsWithEndDate[0])}`);
-
     await fetchAllTimeEntriesFY();
-
-    Logger.log(`allTimeEntriesFY keys count: ${Object.keys(allTimeEntriesFY).length}`);
-    Logger.log(`allTimeEntriesFY example: ${JSON.stringify(allTimeEntriesFY[Object.keys(allTimeEntriesFY)[0]])}`);
 
     // get list of projects which have time logged to it during the financial year
     const projectsWithTimeLogged = Object.values(allTimeEntriesFY).reduce((acc, entries) => {
@@ -118,22 +100,11 @@ async function createBudgetReport() {
 
     // create unique list of projects
     const reportableProjectsIncludingDuplicates = activeProjects.concat(archivedProjectsWithStartDate, archivedProjectsWithEndDate, projectsWithTimeLogged);
-    const reportableProjectsUnique = Array.from(new Set(reportableProjectsIncludingDuplicates.map((project) => project.id))).map((id) => {
+    const reportableProjects = Array.from(new Set(reportableProjectsIncludingDuplicates.map((project) => project.id))).map((id) => {
       return reportableProjectsIncludingDuplicates.find((project) => project.id === id);
     });
 
-    // Filter out marketing pod and pod marketing projects
-    const reportableProjects = reportableProjectsUnique.filter((project) => project.client && project.client.id !== 12129858 && project.client.id !== 13980295);
-
-    // filter to ambion id 12124635 or HIVE 12129899 for testing
-    // const reportableProjects = reportableProjectsUnique.filter((project) => project.client && project.client.id === 12129899);
-
-    Logger.log(`Reportable projects count: ${reportableProjects.length}`);
-    Logger.log(`Reportable projects example: ${JSON.stringify(reportableProjects[0])}`);
-
     const { masterReport } = await processBudgetReport(rawBudgetData, users, roles, reportableProjects);
-
-    // Filter `masterReport` for reportable projects
 
     // Filter `masterReport` for specific reports:
     const overBudgetReport = masterReport.filter((item) => item.remaining_budget < 0 && !item.budget_is_monthly);
@@ -270,11 +241,8 @@ async function fetchAllTimeEntriesFY() {
       Logger.log("Error fetching all time entries: " + error.message);
     }
   } else {
-    Logger.log("Using dummy data for time entries");
     // Use dummy data for development/testing
     const dummyEntries = getDummyTimeEntries().time_entries;
-    Logger.log(`Dummy entries count: ${dummyEntries.length}`);
-    Logger.log(`Dummy entries example: ${JSON.stringify(dummyEntries[0])}`);
     allTimeEntriesFY = {};
     dummyEntries.forEach((entry) => {
       const projectId = entry.project.id;
@@ -800,7 +768,7 @@ function populateReworkedProjectsSheet(sheet, data) {
       rowData[9] = item.first_time_entry || ""; // Start Billable Logged Date
       rowData[10] = item.last_time_entry || ""; // Latest Billable Logged Date
       rowData[11] = Array.isArray(item.associated_invoices) ? item.associated_invoices.join(", ") : item.associated_invoices || ""; // Associated Invoices
-      rowData[12] = `https://marketingpod.harvestapp.com/projects/${item.id || ""}`; // Link to Project in Harvest
+      rowData[12] = harvestBaseUrl + "/projects/" + (item.id || "");      
       rowData[13] = item.rework_reason || ""; // Rework Reason
       // Ensure all role columns in rowData are initialized to 0
       Array.from(allRoles).forEach((role) => {
@@ -891,7 +859,7 @@ function populateSheet(sheet, data, reportType) {
       rowData[11] = item.first_time_entry || "";
       rowData[12] = item.last_time_entry || "";
       rowData[13] = Array.isArray(item.associated_invoices) ? item.associated_invoices.join(", ") : item.associated_invoices || "";
-      rowData[14] = "https://marketingpod.harvestapp.com/projects/" + (item.id || "");
+      rowData[14] = harvestBaseUrl + "/projects/" + (item.id || "");  
       rowData[15] = ""; // Blank cell - Why has it gone over?
       rowData[16] = ""; // What is the action?
 
@@ -1101,7 +1069,7 @@ function populateSummarySheet(summarySheet, overBudgetData) {
   // Clear the sheet first to avoid appending to old data
   summarySheet.clear();
 
-  const introduction = "This report is filtered to projects that are either a) active b) start or end within FY c) activity within FY (excluding Pod or Pod Marketing)";
+  const introduction = "This report is filtered to projects that are either a) active b) start or end within FY c) activity within FY";
   summarySheet.getRange("A1").setValue(introduction);
 
   // Get today's date in DD/MM/YYYY format
@@ -1206,7 +1174,7 @@ function populateMissingBudgetSheet(missingBudgetSheet, missingBudgetReport) {
     rowData[5] = budgetType === "£" ? item.budget || 0 : (item.budget * defaultHourlyRate).toFixed(2);
     rowData[6] = item.starts_on || "";
     rowData[7] = item.ends_on || "";
-    rowData[8] = "https://marketingpod.harvestapp.com/projects/" + (item.id || "");
+    rowData[8] = harvestBaseUrl + "/projects/" + (item.id || "");
     rowData[9] = item.total_logged_hours || "Not Available";
 
     missingBudgetSheet.appendRow(rowData);
