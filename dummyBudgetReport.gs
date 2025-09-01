@@ -1,6 +1,6 @@
 function getDummyBudgetReport() {
   return {
-    "results": [
+    results: [
       // 10 Overbudget projects
       {
         "project_id": 100001,

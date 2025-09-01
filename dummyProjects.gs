@@ -1,6 +1,5 @@
 function getDummyProjects() {
-  return {
-    "projects": [
+    const projectsArray = [
       // 10 Overbudget projects
       {
         "id": 100001,
@@ -845,5 +844,9 @@ function getDummyProjects() {
         "client": { "id": 20040 + i, "name": `ProfitableClient${11 + i}`, "currency": "GBP" }
       }))
     ]
-  };
+  const projectsObj = {};
+  projectsArray.forEach(project => {
+    projectsObj[project.id] = project;
+  });
+  return projectsArray;
 }

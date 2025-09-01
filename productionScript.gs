@@ -76,7 +76,13 @@ async function createBudgetReport() {
     // 3. Archived but have time logged to it during the financial year
     // 4. Not including Pod (12129858) or Pod Marketing (13980295) and
 
+    Logger.log(allProjects)
+
     const activeProjects = Object.values(allProjects).filter((project) => project.is_active);
+
+    Logger.log(`Active projects count: ${activeProjects.length}`);
+    Logger.log(`Active projects example: ${JSON.stringify(activeProjects[0])}`);
+
     const archivedProjects = Object.values(allProjects).filter((project) => !project.is_active);
     const archivedProjectsWithStartDate = archivedProjects.filter((project) => {
       const startDate = new Date(project.starts_on);
@@ -87,7 +93,7 @@ async function createBudgetReport() {
       return endDate >= currentFY.start && endDate <= currentFY.end;
     });
 
-    accessToken && accountId ?  await fetchAllTimeEntriesFY() : getDummyTimeEntries();
+    await fetchAllTimeEntriesFY();
 
     // Logger.log(`allTimeEntriesFY count: ${Object.keys(allTimeEntriesFY).length}`);
 
@@ -233,24 +239,30 @@ async function fetchAllPages({ url, method = "GET", muteHttpExceptions = true } 
 
 // Fetch time entries for projects with start or end date within FY
 async function fetchAllTimeEntriesFY() {
-  try {
-    const startFYFormatted = Utilities.formatDate(currentFY.start, timeZone, "yyyy-MM-dd");
-    const endFYFormatted = Utilities.formatDate(currentDate, timeZone, "yyyy-MM-dd");
+  if (accessToken && accountId) {
+    try {
+      const startFYFormatted = Utilities.formatDate(currentFY.start, timeZone, "yyyy-MM-dd");
+      const endFYFormatted = Utilities.formatDate(currentDate, timeZone, "yyyy-MM-dd");
 
-    let allTimeEntriesFYData = [];
-    let nextPageUrl = `https://api.harvestapp.com/v2/time_entries?from=${startFYFormatted}&to=${endFYFormatted}&page=1`;
+      let allTimeEntriesFYData = [];
+      let nextPageUrl = `https://api.harvestapp.com/v2/time_entries?from=${startFYFormatted}&to=${endFYFormatted}&page=1`;
 
-    allTimeEntriesFYData = (await fetchAllPages({ url: nextPageUrl })).reduce((previous, current) => previous.concat(current.time_entries), []);
+      allTimeEntriesFYData = (await fetchAllPages({ url: nextPageUrl })).reduce((previous, current) => previous.concat(current.time_entries), []);
 
-    allTimeEntriesFYData.forEach((entry) => {
-      if (!allTimeEntriesFY[entry.project.id]) {
-        allTimeEntriesFY[entry.project.id] = [];
-      }
-      allTimeEntriesFY[entry.project.id].push(entry);
-    });
-  } catch (error) {
-    Logger.log("Error fetching all time entries: " + error.message);
+      allTimeEntriesFYData.forEach((entry) => {
+        if (!allTimeEntriesFY[entry.project.id]) {
+          allTimeEntriesFY[entry.project.id] = [];
+        }
+        allTimeEntriesFY[entry.project.id].push(entry);
+      });
+    } catch (error) {
+      Logger.log("Error fetching all time entries: " + error.message);
+    }
+  } else {
+    // Use dummy data for development/testing
+    allTimeEntriesFY = getDummyTimeEntries();
   }
+  
 }
 
 // Get the Budget Report data
