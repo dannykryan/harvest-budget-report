@@ -4,7 +4,7 @@ This Google Apps Script automates the generation of budget and rework reports fo
 
 The project has now been updated to work with dummy data for testing when a Harvest account ID and access token has not been supplied.
 
-View an example output sheet: [HERE]([url](https://docs.google.com/spreadsheets/d/1FTmQwZVPsT-qDZld-Hjd87sc1HViZaC6-WuhwkAu3Dg/edit?usp=sharing))
+View an example output sheet: [HERE](https://docs.google.com/spreadsheets/d/1FTmQwZVPsT-qDZld-Hjd87sc1HViZaC6-WuhwkAu3Dg/edit?usp=sharing)
 
 ---
 Screenshot:
