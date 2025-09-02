@@ -1,12 +1,14 @@
 // This script should be ran in Google Apps Script
 
 // Api urls
-const budgetReportApi = "https://api.harvestapp.com/v2/reports/project_budget?&per_page=2000";
+const budgetReportApi =
+  "https://api.harvestapp.com/v2/reports/project_budget?&per_page=2000";
 const usersApiUrl = "https://api.harvestapp.com/v2/users";
 const rolesApiUrl = "https://api.harvestapp.com/v2/roles";
 // projectApiUrl and timeEntriesApiUrl will require a project ID appended
 const projectApiUrl = "https://api.harvestapp.com/v2/projects/";
-const timeEntriesApiUrl = "https://api.harvestapp.com/v2/time_entries?project_id=";
+const timeEntriesApiUrl =
+  "https://api.harvestapp.com/v2/time_entries?project_id=";
 const invoiceApiUrl = "https://api.harvestapp.com/v2/invoices?project_id=";
 
 // Get script properties
@@ -17,7 +19,9 @@ const recipientEmail = scriptProperties.getProperty("recipientEmail");
 const folderId = scriptProperties.getProperty("outputFolderId");
 
 // Base URL, Access Token and Account ID for Harvest API
-const harvestBaseUrl = scriptProperties.getProperty("harvestBaseUrl") || "https://mycompany.harvestapp.com";
+const harvestBaseUrl =
+  scriptProperties.getProperty("harvestBaseUrl") ||
+  "https://mycompany.harvestapp.com";
 const accessToken = scriptProperties.getProperty("harvestAccessToken");
 const accountId = scriptProperties.getProperty("harvestAccountID");
 
@@ -31,14 +35,21 @@ const headers = {
 // Get and format the date
 const currentDate = new Date();
 const timeZone = "Europe/London"; // London timezone
-const formattedDate = Utilities.formatDate(currentDate, timeZone, "yyyy/MM/dd HH:mm");
+const formattedDate = Utilities.formatDate(
+  currentDate,
+  timeZone,
+  "yyyy/MM/dd HH:mm"
+);
 
 // Determine the start and end dates of the financial year
 const currentYear = currentDate.getFullYear();
 const currentMonth = currentDate.getMonth();
 const currentDay = currentDate.getDate();
 
-const startYear = currentMonth > 3 || (currentMonth === 3 && currentDay >= 6) ? currentYear : currentYear - 1;
+const startYear =
+  currentMonth > 3 || (currentMonth === 3 && currentDay >= 6)
+    ? currentYear
+    : currentYear - 1;
 const endYear = startYear + 1;
 
 const currentFY = {
@@ -47,26 +58,31 @@ const currentFY = {
   end: new Date(endYear, 3, 1), // April 1st
 };
 
-let currentFYClientTotals = [];
-let allTimeEntriesFY = {};
-let totalReworkTimeByRole = {};
-let totalReworkCost = 0;
-let totalBillableHours = 0;
-let totalHours = 0;
-let totalCostOverBudget = 0;
-let billableRateByRole = {};
-// The billable rate by role is populated in the calculateTimeByRole() function
-let defaultDayRate = 975;
-let defaultHourlyRate = defaultDayRate / 7.5; // Default hourly rate based on a 7.5-hour workday
+function createInitialReportState() {
+  const defaultDayRate = 975;
+  return {
+    currentFYClientTotals: [],
+    allTimeEntriesFY: {},
+    totalReworkTimeByRole: {},
+    totalReworkCost: 0,
+    totalBillableHours: 0,
+    totalHours: 0,
+    totalCostOverBudget: 0,
+    billableRateByRole: {},
+    defaultDayRate,
+    defaultHourlyRate: defaultDayRate / 7.5,
+  };
+}
 
 // Main function
 async function createBudgetReport() {
+  const reportState = createInitialReportState();
   try {
     const [rawBudgetData, users, roles, allProjects] = await Promise.all([
       accessToken && accountId ? getBudgetReportData() : getDummyBudgetReport(), // Fetch budget report data
       accessToken && accountId ? getUsers() : getDummyUsers(), // Fetch users
       accessToken && accountId ? getRoles() : getDummyRoles(), // Fetch roles
-      accessToken && accountId ? fetchAllProjects() : getDummyProjects() // Fetch all projects
+      accessToken && accountId ? fetchAllProjects() : getDummyProjects(), // Fetch all projects
     ]);
 
     // get list of projects which are:
@@ -74,9 +90,13 @@ async function createBudgetReport() {
     // 2. Archived but have a start or end date within the financial year
     // 3. Archived but have time logged to it during the financial year
 
-    const activeProjects = Object.values(allProjects).filter((project) => project.is_active);
+    const activeProjects = Object.values(allProjects).filter(
+      (project) => project.is_active
+    );
 
-    const archivedProjects = Object.values(allProjects).filter((project) => !project.is_active);
+    const archivedProjects = Object.values(allProjects).filter(
+      (project) => !project.is_active
+    );
 
     const archivedProjectsWithStartDate = archivedProjects.filter((project) => {
       const startDate = new Date(project.starts_on);
@@ -88,10 +108,13 @@ async function createBudgetReport() {
       return endDate >= currentFY.start && endDate <= currentFY.end;
     });
 
-    await fetchAllTimeEntriesFY();
+    // Pass only the relevant state piece
+    await fetchAllTimeEntriesFY(reportState.allTimeEntriesFY);
 
     // get list of projects which have time logged to it during the financial year
-    const projectsWithTimeLogged = Object.values(allTimeEntriesFY).reduce((acc, entries) => {
+    const projectsWithTimeLogged = Object.values(
+      reportState.allTimeEntriesFY
+    ).reduce((acc, entries) => {
       if (entries.length > 0) {
         acc.push(entries[0].project);
       }
@@ -99,29 +122,67 @@ async function createBudgetReport() {
     }, []);
 
     // create unique list of projects
-    const reportableProjectsIncludingDuplicates = activeProjects.concat(archivedProjectsWithStartDate, archivedProjectsWithEndDate, projectsWithTimeLogged);
-    const reportableProjects = Array.from(new Set(reportableProjectsIncludingDuplicates.map((project) => project.id))).map((id) => {
-      return reportableProjectsIncludingDuplicates.find((project) => project.id === id);
+    const reportableProjectsIncludingDuplicates = activeProjects.concat(
+      archivedProjectsWithStartDate,
+      archivedProjectsWithEndDate,
+      projectsWithTimeLogged
+    );
+    const reportableProjects = Array.from(
+      new Set(
+        reportableProjectsIncludingDuplicates.map((project) => project.id)
+      )
+    ).map((id) => {
+      return reportableProjectsIncludingDuplicates.find(
+        (project) => project.id === id
+      );
     });
 
-    const { masterReport } = await processBudgetReport(rawBudgetData, users, roles, reportableProjects);
+    const { masterReport } = await processBudgetReport(
+      rawBudgetData,
+      users,
+      roles,
+      reportableProjects,
+      reportState // processBudgetReport needs full state
+    );
 
     // Filter `masterReport` for specific reports:
-    const overBudgetReport = masterReport.filter((item) => item.remaining_budget < 0 && !item.budget_is_monthly);
+    const overBudgetReport = masterReport.filter(
+      (item) => item.remaining_budget < 0 && !item.budget_is_monthly
+    );
     const nearlyOverBudgetReport = masterReport.filter((item) => {
-      const budgetPercentRemaining = item.budget === 0 ? 0 : (item.remaining_budget / item.budget) * 100;
-      return budgetPercentRemaining <= 20 && budgetPercentRemaining >= 0 && !item.budget_is_monthly;
+      const budgetPercentRemaining =
+        item.budget === 0 ? 0 : (item.remaining_budget / item.budget) * 100;
+      return (
+        budgetPercentRemaining <= 20 &&
+        budgetPercentRemaining >= 0 &&
+        !item.budget_is_monthly
+      );
     });
     const profitableProjectsReport = masterReport.filter((item) => {
-      const budgetPercentRemaining = item.budget > 0 ? (item.remaining_budget / item.budget) * 100 : 0;
+      const budgetPercentRemaining =
+        item.budget > 0 ? (item.remaining_budget / item.budget) * 100 : 0;
       return budgetPercentRemaining > 20 && !item.is_active;
     });
 
     const missingBudgetReport = reportableProjects.filter((item) => {
-      return (item.cost_budget === null || item.cost_budget === 0 || item.budget_by === "none") && item.is_billable === true;
+      return (
+        (item.cost_budget === null ||
+          item.cost_budget === 0 ||
+          item.budget_by === "none") &&
+        item.is_billable === true
+      );
     });
 
-    const combinedSheetUrl = createCombinedGoogleSheet(masterReport, overBudgetReport, nearlyOverBudgetReport, profitableProjectsReport, currentFYClientTotals, roles, missingBudgetReport);
+    const combinedSheetUrl = createCombinedGoogleSheet(
+      masterReport,
+      overBudgetReport,
+      nearlyOverBudgetReport,
+      profitableProjectsReport,
+      reportState.currentFYClientTotals,
+      roles,
+      missingBudgetReport,
+      reportState // createCombinedGoogleSheet needs full state
+    );
     Logger.log(`Combined report created at: ${combinedSheetUrl}`);
 
     sendEmail(combinedSheetUrl);
@@ -150,7 +211,9 @@ async function fetchFromApi(url, options, retries = 3, delay = 1000) {
       if (response.getResponseCode() === 200) {
         return JSON.parse(response.getContentText());
       } else {
-        throw new Error(`Attempt ${attempt} failed: ${response.getResponseCode()} ${response.getContentText()}`);
+        throw new Error(
+          `Attempt ${attempt} failed: ${response.getResponseCode()} ${response.getContentText()}`
+        );
       }
     } catch (error) {
       Logger.log(`Attempt ${attempt} failed: ${error.message}`);
@@ -195,7 +258,11 @@ async function fetchAllProjects() {
 }
 
 // Fetch all pages
-async function fetchAllPages({ url, method = "GET", muteHttpExceptions = true } = {}) {
+async function fetchAllPages({
+  url,
+  method = "GET",
+  muteHttpExceptions = true,
+} = {}) {
   let pages = [];
   let page = 1;
 
@@ -220,16 +287,27 @@ async function fetchAllPages({ url, method = "GET", muteHttpExceptions = true } 
 }
 
 // Fetch time entries for projects with start or end date within FY
-async function fetchAllTimeEntriesFY() {
+async function fetchAllTimeEntriesFY(allTimeEntriesFY) {
   if (accessToken && accountId) {
     try {
-      const startFYFormatted = Utilities.formatDate(currentFY.start, timeZone, "yyyy-MM-dd");
-      const endFYFormatted = Utilities.formatDate(currentDate, timeZone, "yyyy-MM-dd");
+      const startFYFormatted = Utilities.formatDate(
+        currentFY.start,
+        timeZone,
+        "yyyy-MM-dd"
+      );
+      const endFYFormatted = Utilities.formatDate(
+        currentDate,
+        timeZone,
+        "yyyy-MM-dd"
+      );
 
       let allTimeEntriesFYData = [];
       let nextPageUrl = `https://api.harvestapp.com/v2/time_entries?from=${startFYFormatted}&to=${endFYFormatted}&page=1`;
 
-      allTimeEntriesFYData = (await fetchAllPages({ url: nextPageUrl })).reduce((previous, current) => previous.concat(current.time_entries), []);
+      allTimeEntriesFYData = (await fetchAllPages({ url: nextPageUrl })).reduce(
+        (previous, current) => previous.concat(current.time_entries),
+        []
+      );
 
       allTimeEntriesFYData.forEach((entry) => {
         if (!allTimeEntriesFY[entry.project.id]) {
@@ -243,7 +321,8 @@ async function fetchAllTimeEntriesFY() {
   } else {
     // Use dummy data for development/testing
     const dummyEntries = getDummyTimeEntries().time_entries;
-    allTimeEntriesFY = {};
+    // Clear the object
+    for (const key in allTimeEntriesFY) delete allTimeEntriesFY[key];
     dummyEntries.forEach((entry) => {
       const projectId = entry.project.id;
       if (!allTimeEntriesFY[projectId]) {
@@ -257,7 +336,12 @@ async function fetchAllTimeEntriesFY() {
 // Get the Budget Report data
 async function getBudgetReportData() {
   try {
-    return (await fetchAllPages({ url: budgetReportApi })).reduce((previous, current) => ({ results: previous.results.concat(current.results) }), { results: [] });
+    return (await fetchAllPages({ url: budgetReportApi })).reduce(
+      (previous, current) => ({
+        results: previous.results.concat(current.results),
+      }),
+      { results: [] }
+    );
   } catch (error) {
     Logger.log("Error fetching Budget Report Data: " + error.message);
     return null;
@@ -287,7 +371,13 @@ async function getRoles() {
 }
 
 // Process the Budget Report
-async function processBudgetReport(rawBudgetData, users, roles, reportableProjects) {
+async function processBudgetReport(
+  rawBudgetData,
+  users,
+  roles,
+  reportableProjects,
+  reportState
+) {
   Logger.log("Processing all projects to compile a master report...");
 
   try {
@@ -299,21 +389,34 @@ async function processBudgetReport(rawBudgetData, users, roles, reportableProjec
     }
 
     // filter out projects that are not reportable
-    const reportableProjectsBudgetData = rawBudgetData.results.filter((item) => {
-      return reportableProjects.some((project) => project.id === item.project_id);
-    });
+    const reportableProjectsBudgetData = rawBudgetData.results.filter(
+      (item) => {
+        return reportableProjects.some(
+          (project) => project.id === item.project_id
+        );
+      }
+    );
 
     for (const item of reportableProjectsBudgetData) {
       // Get detailed project information for reportable projects
-      const projectDetails = await getProjectDetails(item.project_id, users, roles, reportableProjects, "master");
+      const projectDetails = await getProjectDetails(
+        item.project_id,
+        users,
+        roles,
+        reportableProjects,
+        reportState
+      );
 
       if (!projectDetails) continue;
 
-      const budgetPercentRemaining = item.budget === 0 ? 0 : (item.budget_remaining / item.budget) * 100;
+      const budgetPercentRemaining =
+        item.budget === 0 ? 0 : (item.budget_remaining / item.budget) * 100;
 
       // Update for roleBreakdownArray
       const roleBreakdownArray = [];
-      for (const [role, details] of Object.entries(projectDetails.total_time_by_role)) {
+      for (const [role, details] of Object.entries(
+        projectDetails.total_time_by_role
+      )) {
         roleBreakdownArray.push({
           role: role,
           totalHours: details.totalHours,
@@ -321,7 +424,9 @@ async function processBudgetReport(rawBudgetData, users, roles, reportableProjec
       }
 
       const reworkRoleBreakdownArray = [];
-      for (const [role, details] of Object.entries(projectDetails.rework_time_by_role)) {
+      for (const [role, details] of Object.entries(
+        projectDetails.rework_time_by_role
+      )) {
         if (details.reworkHours > 0) {
           reworkRoleBreakdownArray.push({
             role: role,
@@ -331,8 +436,20 @@ async function processBudgetReport(rawBudgetData, users, roles, reportableProjec
         }
       }
 
-      const formattedStartsOn = projectDetails.starts_on ? Utilities.formatDate(new Date(projectDetails.starts_on), timeZone, "dd/MM/yyyy") : null;
-      const formattedEndsOn = projectDetails.ends_on ? Utilities.formatDate(new Date(projectDetails.ends_on), timeZone, "dd/MM/yyyy") : null;
+      const formattedStartsOn = projectDetails.starts_on
+        ? Utilities.formatDate(
+            new Date(projectDetails.starts_on),
+            timeZone,
+            "dd/MM/yyyy"
+          )
+        : null;
+      const formattedEndsOn = projectDetails.ends_on
+        ? Utilities.formatDate(
+            new Date(projectDetails.ends_on),
+            timeZone,
+            "dd/MM/yyyy"
+          )
+        : null;
 
       const enrichedItem = {
         ...item,
@@ -351,7 +468,10 @@ async function processBudgetReport(rawBudgetData, users, roles, reportableProjec
         associated_invoices: projectDetails.associated_invoices,
         time_entries: projectDetails.time_entries || [],
         remaining_budget: item.budget_remaining,
-        budget_utilization: item.budget === 0 ? "N/A" : ((item.budget_spent / item.budget) * 100).toFixed(2) + "%",
+        budget_utilization:
+          item.budget === 0
+            ? "N/A"
+            : ((item.budget_spent / item.budget) * 100).toFixed(2) + "%",
       };
 
       masterReport.push(enrichedItem);
@@ -371,9 +491,17 @@ async function processBudgetReport(rawBudgetData, users, roles, reportableProjec
 }
 
 // Get project details
-async function getProjectDetails(projectId, users, roles, reportableProjects) {
+async function getProjectDetails(
+  projectId,
+  users,
+  roles,
+  reportableProjects,
+  reportState
+) {
   try {
-    const projectDetails = reportableProjects.find((project) => project.id === projectId);
+    const projectDetails = reportableProjects.find(
+      (project) => project.id === projectId
+    );
     if (!projectDetails) {
       Logger.log(`Project with ID ${projectId} not found in cached data.`);
       return null;
@@ -384,44 +512,64 @@ async function getProjectDetails(projectId, users, roles, reportableProjects) {
 
     let timeEntries = [];
     if (accessToken && accountId) {
-      const timeEntriesData = await fetchAllPages({ url: timeEntriesApiUrl + projectId });
+      const timeEntriesData = await fetchAllPages({
+        url: timeEntriesApiUrl + projectId,
+      });
       timeEntries = timeEntriesData[0].time_entries || [];
     } else {
-      // Use dummy data from global allTimeEntriesFY
-      timeEntries = allTimeEntriesFY[projectId] || [];
+      // Use dummy data from global reportState.allTimeEntriesFY
+      timeEntries = reportState.allTimeEntriesFY[projectId] || [];
     }
 
     if (timeEntries === null) return null;
 
     const projectInvoices = await fetchInvoicesByProjectId(projectId);
 
-    const totalLoggedHours = timeEntries.reduce((total, entry) => total + entry.hours, 0);
-    const billableHours = timeEntries.filter((entry) => entry.billable).reduce((total, entry) => total + entry.hours, 0);
+    const totalLoggedHours = timeEntries.reduce(
+      (total, entry) => total + entry.hours,
+      0
+    );
+    const billableHours = timeEntries
+      .filter((entry) => entry.billable)
+      .reduce((total, entry) => total + entry.hours, 0);
 
     // Calculate time by role in a single pass
-    const timeByRole = calculateTimeByRole(timeEntries, roles);
+    const timeByRole = calculateTimeByRole(timeEntries, roles, reportState);
 
     // Populate total_time_by_role and rework_time_by_role
     projectDetails["total_time_by_role"] = timeByRole;
-    projectDetails["rework_time_by_role"] = Object.entries(timeByRole).reduce((acc, [role, data]) => {
-      acc[role] = {
-        reworkHours: data.totalReworkHours,
-        reworkCost: data.totalReworkCost,
-      };
-      return acc;
-    }, {});
+    projectDetails["rework_time_by_role"] = Object.entries(timeByRole).reduce(
+      (acc, [role, data]) => {
+        acc[role] = {
+          reworkHours: data.totalReworkHours,
+          reworkCost: data.totalReworkCost,
+        };
+        return acc;
+      },
+      {}
+    );
 
     // Set up first and last time entries
     if (timeEntries.length === 0) {
       projectDetails["first_time_entry"] = "N/A";
       projectDetails["last_time_entry"] = "N/A";
     } else {
-      const timeEntryDates = timeEntries.map((entry) => new Date(entry.spent_date));
+      const timeEntryDates = timeEntries.map(
+        (entry) => new Date(entry.spent_date)
+      );
       const firstTimeEntry = new Date(Math.min(...timeEntryDates));
       const lastTimeEntry = new Date(Math.max(...timeEntryDates));
 
-      projectDetails["first_time_entry"] = Utilities.formatDate(firstTimeEntry, timeZone, "dd/MM/yyyy");
-      projectDetails["last_time_entry"] = Utilities.formatDate(lastTimeEntry, timeZone, "dd/MM/yyyy");
+      projectDetails["first_time_entry"] = Utilities.formatDate(
+        firstTimeEntry,
+        timeZone,
+        "dd/MM/yyyy"
+      );
+      projectDetails["last_time_entry"] = Utilities.formatDate(
+        lastTimeEntry,
+        timeZone,
+        "dd/MM/yyyy"
+      );
     }
 
     projectDetails["associated_invoices"] = projectInvoices;
@@ -433,9 +581,15 @@ async function getProjectDetails(projectId, users, roles, reportableProjects) {
     timeEntries.forEach((entry) => {
       const entryDate = new Date(entry.spent_date);
       if (entryDate >= currentFY.start && entryDate <= currentFY.end) {
-        const monthKey = `${entryDate.getFullYear()}-${entryDate.getMonth() + 1}`;
+        const monthKey = `${entryDate.getFullYear()}-${
+          entryDate.getMonth() + 1
+        }`;
         if (!clientBalancesFYTD[monthKey]) {
-          clientBalancesFYTD[monthKey] = { billable_total: 0, non_billable_total: 0, rework_total: 0 };
+          clientBalancesFYTD[monthKey] = {
+            billable_total: 0,
+            non_billable_total: 0,
+            rework_total: 0,
+          };
         }
 
         if (entry.task.name.toLowerCase().includes("rework")) {
@@ -456,7 +610,7 @@ async function getProjectDetails(projectId, users, roles, reportableProjects) {
       },
     ];
 
-    mergeClientBalances(clientBalanceArray);
+    mergeClientBalances(clientBalanceArray, reportState);
 
     return projectDetails;
   } catch (error) {
@@ -466,7 +620,7 @@ async function getProjectDetails(projectId, users, roles, reportableProjects) {
 }
 
 // Helper function to merge project balance into global totals
-function mergeClientBalances(newClientBalanceArray) {
+function mergeClientBalances(newClientBalanceArray, reportState) {
   // Mapping month indices to month names
   const monthNames = {
     4: "April",
@@ -491,7 +645,20 @@ function mergeClientBalances(newClientBalanceArray) {
 
   // Function to sort the month keys from April to March, considering the year
   function sortMonthKeys(keys) {
-    const monthOrder = ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"];
+    const monthOrder = [
+      "April",
+      "May",
+      "June",
+      "July",
+      "August",
+      "September",
+      "October",
+      "November",
+      "December",
+      "January",
+      "February",
+      "March",
+    ];
 
     return keys.sort((a, b) => {
       const [monthA, yearA] = a.split(" ");
@@ -509,13 +676,15 @@ function mergeClientBalances(newClientBalanceArray) {
     const clientName = Object.keys(entry.client)[0];
     const clientBalance = entry.client[clientName];
 
-    // Find existing client entry in currentFYClientTotals
-    let clientEntry = currentFYClientTotals.find((item) => Object.keys(item)[0] === clientName);
+    // Find existing client entry in reportState.currentFYClientTotals
+    let clientEntry = reportState.currentFYClientTotals.find(
+      (item) => Object.keys(item)[0] === clientName
+    );
 
     if (!clientEntry) {
       // If client not found, add new entry
       clientEntry = { [clientName]: {} };
-      currentFYClientTotals.push(clientEntry);
+      reportState.currentFYClientTotals.push(clientEntry);
     }
 
     const clientData = clientEntry[clientName];
@@ -525,12 +694,19 @@ function mergeClientBalances(newClientBalanceArray) {
       const monthName = convertMonthKey(monthKey);
 
       if (!clientData[monthName]) {
-        clientData[monthName] = { billable_total: 0, non_billable_total: 0, rework_total: 0 };
+        clientData[monthName] = {
+          billable_total: 0,
+          non_billable_total: 0,
+          rework_total: 0,
+        };
       }
 
-      clientData[monthName].billable_total += clientBalance[monthKey].billable_total;
-      clientData[monthName].non_billable_total += clientBalance[monthKey].non_billable_total;
-      clientData[monthName].rework_total += clientBalance[monthKey].rework_total;
+      clientData[monthName].billable_total +=
+        clientBalance[monthKey].billable_total;
+      clientData[monthName].non_billable_total +=
+        clientBalance[monthKey].non_billable_total;
+      clientData[monthName].rework_total +=
+        clientBalance[monthKey].rework_total;
     });
 
     // Sort the months within the client data
@@ -544,7 +720,7 @@ function mergeClientBalances(newClientBalanceArray) {
 }
 
 // Calculate time by role
-function calculateTimeByRole(timeEntries, roles) {
+function calculateTimeByRole(timeEntries, roles, reportState) {
   const calculatedTimes = {};
   const reworkEntries = []; // Separate storage for rework entries
   const userRoles = roles.reduce((acc, role) => {
@@ -579,61 +755,72 @@ function calculateTimeByRole(timeEntries, roles) {
     calculatedTimes[role].entries.push(entry);
     calculatedTimes[role].totalHours += entry.hours;
 
-    // Populate billableRateByRole if not already set
-    if (!billableRateByRole[role] && entry.billable_rate) {
-      billableRateByRole[role] = entry.billable_rate;
+    // Populate reportState.billableRateByRole if not already set
+    if (!reportState.billableRateByRole[role] && entry.billable_rate) {
+      reportState.billableRateByRole[role] = entry.billable_rate;
     }
     if (entry.billable) {
-      totalBillableHours += entry.hours;
+      reportState.totalBillableHours += entry.hours;
     }
-    totalHours += entry.hours;
+    reportState.totalHours += entry.hours;
   });
 
   // Second pass: Process rework entries
   // Rework entries are processed separately to calculate rework billable rates
   reworkEntries
-    .filter(entry => {
+    .filter((entry) => {
       const entryDate = new Date(entry.spent_date);
       return entryDate >= currentFY.start && entryDate <= currentFY.end;
     })
     .forEach((entry) => {
       const role = userRoles[entry.user.id] || "Unknown";
-      const hourlyRate = billableRateByRole[role] || 0; // Default rate to 0 if not set
+      const hourlyRate = reportState.billableRateByRole[role] || 0; // Default rate to 0 if not set
 
-    // Initialize calculatedTimes for the role if not already present
-    if (!calculatedTimes[role]) {
-      calculatedTimes[role] = {
-        totalHours: 0,
-        totalReworkHours: 0,
-        totalReworkCost: 0,
-        entries: [],
-      };
-    }
+      // Initialize calculatedTimes for the role if not already present
+      if (!calculatedTimes[role]) {
+        calculatedTimes[role] = {
+          totalHours: 0,
+          totalReworkHours: 0,
+          totalReworkCost: 0,
+          entries: [],
+        };
+      }
 
-    // Add entry and update totals directly within `calculatedTimes`
-    calculatedTimes[role].entries.push(entry);
-    calculatedTimes[role].totalReworkHours += entry.hours;
-    calculatedTimes[role].totalReworkCost += entry.hours * hourlyRate;
-  });
+      // Add entry and update totals directly within `calculatedTimes`
+      calculatedTimes[role].entries.push(entry);
+      calculatedTimes[role].totalReworkHours += entry.hours;
+      calculatedTimes[role].totalReworkCost += entry.hours * hourlyRate;
+    });
 
-  // Now update totalReworkTimeByRole with calculatedTimes
+  // Now update reportState.totalReworkTimeByRole with calculatedTimes
   Object.keys(calculatedTimes).forEach((role) => {
     const roleData = calculatedTimes[role];
-    if (!totalReworkTimeByRole[role]) {
-      totalReworkTimeByRole[role] = {
+    if (!reportState.totalReworkTimeByRole[role]) {
+      reportState.totalReworkTimeByRole[role] = {
         totalReworkCost: 0,
         totalReworkHours: 0,
       };
     }
-    totalReworkTimeByRole[role].totalReworkCost += roleData.totalReworkCost;
-    totalReworkTimeByRole[role].totalReworkHours += roleData.totalReworkHours;
+    reportState.totalReworkTimeByRole[role].totalReworkCost +=
+      roleData.totalReworkCost;
+    reportState.totalReworkTimeByRole[role].totalReworkHours +=
+      roleData.totalReworkHours;
   });
 
   return calculatedTimes;
 }
 
 // Create the Google sheet with multiple tabs for different reports
-function createCombinedGoogleSheet(masterReport, overBudgetData, nearlyOverBudgetData, profitableProjectsReport, currentFYClientTotals, roles, missingBudgetReport) {
+function createCombinedGoogleSheet(
+  masterReport,
+  overBudgetData,
+  nearlyOverBudgetData,
+  profitableProjectsReport,
+  currentFYClientTotals,
+  roles,
+  missingBudgetReport,
+  reportState
+) {
   const ss = SpreadsheetApp.create("Harvest Budget Report " + formattedDate);
 
   // Move the spreadsheet to the specified folder Id
@@ -648,50 +835,89 @@ function createCombinedGoogleSheet(masterReport, overBudgetData, nearlyOverBudge
   }
 
   // Create and populate the 'Over Budget' sheet
-  const overBudgetSheet = ss.getSheetByName("Sheet1") || ss.insertSheet(">100% Budget Projects");
+  const overBudgetSheet =
+    ss.getSheetByName("Sheet1") || ss.insertSheet(">100% Budget Projects");
   overBudgetSheet.setName(">100% Budget Projects");
-  populateSheet(overBudgetSheet, overBudgetData, "overBudget");
+  populateSheet(overBudgetSheet, overBudgetData, "overBudget", reportState);
 
   // Create and populate the 'Nearly Over Budget' sheet
-  const nearlyOverBudgetSheet = ss.getSheetByName(">80% Budget Projects") || ss.insertSheet(">80% Budget Projects");
+  const nearlyOverBudgetSheet =
+    ss.getSheetByName(">80% Budget Projects") ||
+    ss.insertSheet(">80% Budget Projects");
   nearlyOverBudgetSheet.setName(">80% Budget Projects");
-  populateSheet(nearlyOverBudgetSheet, nearlyOverBudgetData, "nearlyOverBudget");
+  populateSheet(
+    nearlyOverBudgetSheet,
+    nearlyOverBudgetData,
+    "nearlyOverBudget",
+    reportState
+  );
 
-  const reworkedProjectsData = masterReport.filter(item => {
-    if (!item.rework_role_breakdown || !Array.isArray(item.rework_role_breakdown)) {
+  const reworkedProjectsData = masterReport.filter((item) => {
+    if (
+      !item.rework_role_breakdown ||
+      !Array.isArray(item.rework_role_breakdown)
+    ) {
       return false;
     }
-    const totalReworkHours = item.rework_role_breakdown.reduce((sum, role) => sum + (role.totalHours || 0), 0);
+    const totalReworkHours = item.rework_role_breakdown.reduce(
+      (sum, role) => sum + (role.totalHours || 0),
+      0
+    );
     return totalReworkHours > 0;
   });
 
   // Create and populate the 'Reworked Projects' sheet
-  const reworkedProjectsSheet = ss.getSheetByName("Reworked Projects") || ss.insertSheet("Reworked Projects");
+  const reworkedProjectsSheet =
+    ss.getSheetByName("Reworked Projects") ||
+    ss.insertSheet("Reworked Projects");
   populateReworkedProjectsSheet(reworkedProjectsSheet, reworkedProjectsData);
 
   // Create and populate the 'Current FY Client Totals' sheet
-  const clientTotalsSheet = ss.getSheetByName("Current FY Client Totals") || ss.insertSheet("Current FY Client Totals");
-  populateClientTotalsSheet(clientTotalsSheet, currentFYClientTotals);
+  const clientTotalsSheet =
+    ss.getSheetByName("Current FY Client Totals") ||
+    ss.insertSheet("Current FY Client Totals");
+  populateClientTotalsSheet(
+    clientTotalsSheet,
+    currentFYClientTotals,
+    reportState
+  );
 
   // Create and populate the 'Current FY Rework by Team' sheet
-  const reworkByTeamSheet = ss.getSheetByName("Current FY Rework by Team") || ss.insertSheet("Current FY Rework by Team");
-  populateReworkByTeamSheet(reworkByTeamSheet, currentFYClientTotals, roles);
+  const reworkByTeamSheet =
+    ss.getSheetByName("Current FY Rework by Team") ||
+    ss.insertSheet("Current FY Rework by Team");
+  populateReworkByTeamSheet(
+    reworkByTeamSheet,
+    currentFYClientTotals,
+    roles,
+    reportState
+  );
 
   // Create and populate the 'Summary' sheet
-  const summarySheet = ss.getSheetByName("Summary") || ss.insertSheet("Summary");
-  populateSummarySheet(summarySheet, overBudgetData);
+  const summarySheet =
+    ss.getSheetByName("Summary") || ss.insertSheet("Summary");
+  populateSummarySheet(summarySheet, overBudgetData, reportState);
 
   // Move Summary sheet to first position
   ss.setActiveSheet(summarySheet);
   ss.moveActiveSheet(0);
 
   // Create and populate the 'Missing Budget Projects' sheet
-  const missingBudgetSheet = ss.getSheetByName("Missing Budget Projects") || ss.insertSheet("Missing Budget Projects");
+  const missingBudgetSheet =
+    ss.getSheetByName("Missing Budget Projects") ||
+    ss.insertSheet("Missing Budget Projects");
   populateMissingBudgetSheet(missingBudgetSheet, missingBudgetReport);
 
   // Create and populate the 'Profitable project' sheet
-  const profitableProjectSummarySheet = ss.getSheetByName("Profitable Projects") || ss.insertSheet("Profitable Projects");
-  populateSheet(profitableProjectSummarySheet, profitableProjectsReport, "profitable");
+  const profitableProjectSummarySheet =
+    ss.getSheetByName("Profitable Projects") ||
+    ss.insertSheet("Profitable Projects");
+  populateSheet(
+    profitableProjectSummarySheet,
+    profitableProjectsReport,
+    "profitable",
+    reportState
+  );
 
   // Delete the default empty sheet if necessary
   const remainingSheets = ss.getSheets();
@@ -739,8 +965,14 @@ function populateReworkedProjectsSheet(sheet, data) {
       let totalReworkHours = 0;
       let totalReworkCost = 0;
       if (Array.isArray(item.rework_role_breakdown)) {
-        totalReworkHours = item.rework_role_breakdown.reduce((sum, role) => sum + (role.totalHours || 0), 0);
-        totalReworkCost = item.rework_role_breakdown.reduce((sum, role) => sum + (role.totalReworkCost || 0), 0);
+        totalReworkHours = item.rework_role_breakdown.reduce(
+          (sum, role) => sum + (role.totalHours || 0),
+          0
+        );
+        totalReworkCost = item.rework_role_breakdown.reduce(
+          (sum, role) => sum + (role.totalReworkCost || 0),
+          0
+        );
       }
 
       // Skip appending rows if no rework hours
@@ -757,7 +989,8 @@ function populateReworkedProjectsSheet(sheet, data) {
       // Update rowData[6] with calculated over-budget percentage
       if (item.budget > 0) {
         // Avoid division by zero
-        const overBudgetPercentage = ((item.budget_spent - item.budget) / item.budget) * 100;
+        const overBudgetPercentage =
+          ((item.budget_spent - item.budget) / item.budget) * 100;
         rowData[6] = `${overBudgetPercentage.toFixed(2)}%`; // Format to 2 decimal places
       } else {
         rowData[6] = "N/A"; // Handle cases where budget is zero or missing
@@ -767,8 +1000,10 @@ function populateReworkedProjectsSheet(sheet, data) {
       rowData[8] = item.ends_on || ""; // Harvest End Date
       rowData[9] = item.first_time_entry || ""; // Start Billable Logged Date
       rowData[10] = item.last_time_entry || ""; // Latest Billable Logged Date
-      rowData[11] = Array.isArray(item.associated_invoices) ? item.associated_invoices.join(", ") : item.associated_invoices || ""; // Associated Invoices
-      rowData[12] = harvestBaseUrl + "/projects/" + (item.id || "");      
+      rowData[11] = Array.isArray(item.associated_invoices)
+        ? item.associated_invoices.join(", ")
+        : item.associated_invoices || ""; // Associated Invoices
+      rowData[12] = harvestBaseUrl + "/projects/" + (item.id || "");
       rowData[13] = item.rework_reason || ""; // Rework Reason
       // Ensure all role columns in rowData are initialized to 0
       Array.from(allRoles).forEach((role) => {
@@ -789,7 +1024,11 @@ function populateReworkedProjectsSheet(sheet, data) {
           }
         });
       } else {
-        Logger.log(`Item with missing or invalid rework_role_breakdown: ${JSON.stringify(item)}`);
+        Logger.log(
+          `Item with missing or invalid rework_role_breakdown: ${JSON.stringify(
+            item
+          )}`
+        );
       }
       sheet.appendRow(rowData);
     });
@@ -811,16 +1050,58 @@ function populateReworkedProjectsSheet(sheet, data) {
 }
 
 // Function to populate a sheet with data
-function populateSheet(sheet, data, reportType) {
+function populateSheet(sheet, data, reportType, reportState) {
   try {
     Logger.log(`Populating '${reportType}' spreadsheet`);
 
-    const overBudgetHeaders = ["Job number", "Client name", "Project name", "Status", "Budgeted by", "Budget total", "Budget spent", "Over budget by", "Over budget by %", "Harvest Start Date", "Harvest End Date", "Start Billable Logged Date", "Latest Billable Logged Date", "Associated Invoices", "Link to Project in Harvest", "Why has it gone Over?", "What is the action?", "Wastage Approved By", "Total Project Hours Logged", "Billable Project Hours Logged"];
+    const overBudgetHeaders = [
+      "Job number",
+      "Client name",
+      "Project name",
+      "Status",
+      "Budgeted by",
+      "Budget total",
+      "Budget spent",
+      "Over budget by",
+      "Over budget by %",
+      "Harvest Start Date",
+      "Harvest End Date",
+      "Start Billable Logged Date",
+      "Latest Billable Logged Date",
+      "Associated Invoices",
+      "Link to Project in Harvest",
+      "Why has it gone Over?",
+      "What is the action?",
+      "Wastage Approved By",
+      "Total Project Hours Logged",
+      "Billable Project Hours Logged",
+    ];
 
-    const inBudgetHeaders = ["Job number", "Client name", "Project name", "Status", "Budgeted by", "Budget total", "Budget spent", "Remaining Budget", "Budget Utilization", "Harvest Start Date", "Harvest End Date", "Start Billable Logged Date", "Latest Billable Logged Date", "Associated Invoices", "Link to Project in Harvest", "What is the action?", "Wastage Approved By", "Total Project Hours Logged", "Billable Project Hours Logged"];
+    const inBudgetHeaders = [
+      "Job number",
+      "Client name",
+      "Project name",
+      "Status",
+      "Budgeted by",
+      "Budget total",
+      "Budget spent",
+      "Remaining Budget",
+      "Budget Utilization",
+      "Harvest Start Date",
+      "Harvest End Date",
+      "Start Billable Logged Date",
+      "Latest Billable Logged Date",
+      "Associated Invoices",
+      "Link to Project in Harvest",
+      "What is the action?",
+      "Wastage Approved By",
+      "Total Project Hours Logged",
+      "Billable Project Hours Logged",
+    ];
 
     // Set headers based on report type
-    const headers = reportType === "overBudget" ? overBudgetHeaders : inBudgetHeaders;
+    const headers =
+      reportType === "overBudget" ? overBudgetHeaders : inBudgetHeaders;
 
     sheet.appendRow(headers);
 
@@ -834,21 +1115,46 @@ function populateSheet(sheet, data, reportType) {
       rowData[3] = item.is_active ? "Active" : "Archived";
       rowData[4] = budgetType || "";
       // Budget Total
-      rowData[5] = budgetType === "£" ? item.budget || 0 : (item.budget * defaultHourlyRate).toFixed(2);
+      rowData[5] =
+        budgetType === "£"
+          ? item.budget || 0
+          : (item.budget * reportState.defaultHourlyRate).toFixed(2);
       // Budget Spent
-      rowData[6] = budgetType === "£" ? item.budget_spent || 0 : (item.budget_spent * defaultHourlyRate).toFixed(2);
+      rowData[6] =
+        budgetType === "£"
+          ? item.budget_spent || 0
+          : (item.budget_spent * reportState.defaultHourlyRate).toFixed(2);
 
       if (reportType === "overBudget") {
-        // Calculate and add to totalCostOverBudget (new)
-        const overBudgetBy = budgetType === "£" ? Math.abs(item.budget_remaining) : Math.abs(item.budget_remaining) * defaultHourlyRate;
-        totalCostOverBudget += overBudgetBy;
+        // Calculate and add to reportState.totalCostOverBudget (new)
+        const overBudgetBy =
+          budgetType === "£"
+            ? Math.abs(item.budget_remaining)
+            : Math.abs(item.budget_remaining) * reportState.defaultHourlyRate;
+        reportState.totalCostOverBudget += overBudgetBy;
 
-        rowData[7] = budgetType === "£" ? Math.abs(item.budget_remaining) : (Math.abs(item.budget_remaining) * defaultHourlyRate).toFixed(2); // Over budget by
-        const overBudgetPercentage = item.budget === 0 ? "No budget amount set" : ((item.budget_spent - item.budget) / item.budget) * 100;
+        rowData[7] =
+          budgetType === "£"
+            ? Math.abs(item.budget_remaining)
+            : (
+                Math.abs(item.budget_remaining) * reportState.defaultHourlyRate
+              ).toFixed(2); // Over budget by
+        const overBudgetPercentage =
+          item.budget === 0
+            ? "No budget amount set"
+            : ((item.budget_spent - item.budget) / item.budget) * 100;
 
-        rowData[8] = typeof overBudgetPercentage === "string" ? overBudgetPercentage : `${overBudgetPercentage.toFixed(2)}%`; // Over budget by %
+        rowData[8] =
+          typeof overBudgetPercentage === "string"
+            ? overBudgetPercentage
+            : `${overBudgetPercentage.toFixed(2)}%`; // Over budget by %
       } else if (reportType !== "overBudget") {
-        rowData[7] = budgetType === "£" ? item.budget_remaining || 0 : (Math.abs(item.remaining_budget) * defaultHourlyRate).toFixed(2); // Remaining Budget
+        rowData[7] =
+          budgetType === "£"
+            ? item.budget_remaining || 0
+            : (
+                Math.abs(item.remaining_budget) * reportState.defaultHourlyRate
+              ).toFixed(2); // Remaining Budget
         rowData[8] = item.budget_utilization || ""; // Budget Utilization
       } else {
         Logger.log("Invalid report type");
@@ -858,8 +1164,10 @@ function populateSheet(sheet, data, reportType) {
       rowData[10] = item.ends_on || "";
       rowData[11] = item.first_time_entry || "";
       rowData[12] = item.last_time_entry || "";
-      rowData[13] = Array.isArray(item.associated_invoices) ? item.associated_invoices.join(", ") : item.associated_invoices || "";
-      rowData[14] = harvestBaseUrl + "/projects/" + (item.id || "");  
+      rowData[13] = Array.isArray(item.associated_invoices)
+        ? item.associated_invoices.join(", ")
+        : item.associated_invoices || "";
+      rowData[14] = harvestBaseUrl + "/projects/" + (item.id || "");
       rowData[15] = ""; // Blank cell - Why has it gone over?
       rowData[16] = ""; // What is the action?
 
@@ -877,14 +1185,38 @@ function populateSheet(sheet, data, reportType) {
 
     // Add data validation for the 'Action' column
     const actionColumnIndex = headers.indexOf("What is the action?") + 1; // Get the amount of columns and add 1
-    const rangeAction = sheet.getRange(2, actionColumnIndex, sheet.getLastRow() - 1);
-    const ruleAction = SpreadsheetApp.newDataValidation().requireValueInList(["", "Invoiced", "Bill Client", "Write-Off"], true).setAllowInvalid(false).build();
+    const rangeAction = sheet.getRange(
+      2,
+      actionColumnIndex,
+      sheet.getLastRow() - 1
+    );
+    const ruleAction = SpreadsheetApp.newDataValidation()
+      .requireValueInList(["", "Invoiced", "Bill Client", "Write-Off"], true)
+      .setAllowInvalid(false)
+      .build();
     rangeAction.setDataValidation(ruleAction);
 
     // Add data validation for the 'Approved By' column
     const approvedByColumnIndex = headers.indexOf("Wastage Approved By") + 1; // Get the amount of columns and add 1
-    const rangeApprovedBy = sheet.getRange(2, approvedByColumnIndex, sheet.getLastRow() - 1);
-    const ruleApprovedBy = SpreadsheetApp.newDataValidation().requireValueInList(["", "Jenny Hughes", "Jodie Williams", "Adam Leach", "Kate Garratt", "Emma Crofts"], true).setAllowInvalid(false).build();
+    const rangeApprovedBy = sheet.getRange(
+      2,
+      approvedByColumnIndex,
+      sheet.getLastRow() - 1
+    );
+    const ruleApprovedBy = SpreadsheetApp.newDataValidation()
+      .requireValueInList(
+        [
+          "",
+          "Jenny Hughes",
+          "Jodie Williams",
+          "Adam Leach",
+          "Kate Garratt",
+          "Emma Crofts",
+        ],
+        true
+      )
+      .setAllowInvalid(false)
+      .build();
     rangeApprovedBy.setDataValidation(ruleApprovedBy);
 
     // Set frozen first row and format as bold
@@ -899,7 +1231,9 @@ function populateSheet(sheet, data, reportType) {
 
     if (reportType === "overBudget") {
       // Sort the overBudget spreadsheet by 'Over budget By' column  (highest to lowest)
-      sheet.getRange("A2:T" + sheet.getLastRow()).sort({ column: 8, ascending: false });
+      sheet
+        .getRange("A2:T" + sheet.getLastRow())
+        .sort({ column: 8, ascending: false });
     } else if (reportType === "nearlyOverBudget") {
       // Sort the spreadsheet from low to high (most to least budget lost)
       sheet.getRange("A2:S").sort({ column: 1, ascending: true });
@@ -934,9 +1268,20 @@ function populateSheet(sheet, data, reportType) {
   }
 }
 
-function populateClientTotalsSheet(clientTotalsSheet, currentFYClientTotals) {
+function populateClientTotalsSheet(
+  clientTotalsSheet,
+  currentFYClientTotals,
+  reportState
+) {
   Logger.log("Populating 'Client Totals' spreadsheet");
-  const headers = ["Month", "Client name", "Billable Worked FYTD £", "Non-billable Worked FYTD £", "Total Rework FYTD £", "AEDR (from hours / budget)"];
+  const headers = [
+    "Month",
+    "Client name",
+    "Billable Worked FYTD £",
+    "Non-billable Worked FYTD £",
+    "Total Rework FYTD £",
+    "AEDR (from hours / budget)",
+  ];
 
   // Clear the sheet first to avoid appending to old data
   clientTotalsSheet.clear();
@@ -952,19 +1297,51 @@ function populateClientTotalsSheet(clientTotalsSheet, currentFYClientTotals) {
     const monthlyTotals = clientData[clientName];
 
     for (const [month, totals] of Object.entries(monthlyTotals)) {
-      const billableWorked = totals.billable_total ? (totals.billable_total * defaultHourlyRate).toFixed(2) : "0.00";
-      const nonBillableWorked = totals.non_billable_total ? (totals.non_billable_total * defaultHourlyRate).toFixed(2) : "0.00";
-      const totalRework = totals.rework_total ? (totals.rework_total * defaultHourlyRate).toFixed(2) : "0.00";
+      const billableWorked = totals.billable_total
+        ? (totals.billable_total * reportState.defaultHourlyRate).toFixed(2)
+        : "0.00";
+      const nonBillableWorked = totals.non_billable_total
+        ? (totals.non_billable_total * reportState.defaultHourlyRate).toFixed(2)
+        : "0.00";
+      const totalRework = totals.rework_total
+        ? (totals.rework_total * reportState.defaultHourlyRate).toFixed(2)
+        : "0.00";
       const totalTimeBooked = totals.billable_total + totals.non_billable_total;
-      const aedr = totalTimeBooked ? ((totals.billable_total / totalTimeBooked) * 7.5 * defaultHourlyRate).toFixed(2) : "0.00";
+      const aedr = totalTimeBooked
+        ? (
+            (totals.billable_total / totalTimeBooked) *
+            7.5 *
+            reportState.defaultHourlyRate
+          ).toFixed(2)
+        : "0.00";
 
-      const row = [month, clientName, billableWorked, nonBillableWorked, totalRework, aedr];
+      const row = [
+        month,
+        clientName,
+        billableWorked,
+        nonBillableWorked,
+        totalRework,
+        aedr,
+      ];
       dataRows.push(row);
     }
   });
 
   // Sort dataRows by Month (first column) and then by Client name (second column)
-  const monthOrder = ["April", "May", "June", "July", "August", "September", "October", "November", "December", "January", "February", "March"];
+  const monthOrder = [
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+    "January",
+    "February",
+    "March",
+  ];
 
   dataRows.sort((a, b) => {
     // Extract month and year from the date strings
@@ -976,8 +1353,14 @@ function populateClientTotalsSheet(clientTotalsSheet, currentFYClientTotals) {
     const bMonthIndex = monthOrder.indexOf(bMonth);
 
     // Adjust year for April at the end of the financial year (Corrected logic)
-    const aYearAdjusted = aMonth === "April" && aMonthIndex > monthOrder.indexOf("May") ? parseInt(aYear) + 1 : parseInt(aYear);
-    const bYearAdjusted = bMonth === "April" && bMonthIndex > monthOrder.indexOf("May") ? parseInt(bYear) + 1 : parseInt(bYear);
+    const aYearAdjusted =
+      aMonth === "April" && aMonthIndex > monthOrder.indexOf("May")
+        ? parseInt(aYear) + 1
+        : parseInt(aYear);
+    const bYearAdjusted =
+      bMonth === "April" && bMonthIndex > monthOrder.indexOf("May")
+        ? parseInt(bYear) + 1
+        : parseInt(bYear);
 
     // Compare adjusted years first
     if (aYearAdjusted !== bYearAdjusted) {
@@ -1001,7 +1384,9 @@ function populateClientTotalsSheet(clientTotalsSheet, currentFYClientTotals) {
   clientTotalsSheet.getRange("A1:F1").setFontWeight("bold");
 
   // Set currency format for columns C, D, E, and F
-  clientTotalsSheet.getRange("C2:F" + clientTotalsSheet.getLastRow()).setNumberFormat("£#,##0.00");
+  clientTotalsSheet
+    .getRange("C2:F" + clientTotalsSheet.getLastRow())
+    .setNumberFormat("£#,##0.00");
 
   // Auto-resize columns for readability
   for (let i = 1; i <= headers.length; i++) {
@@ -1012,7 +1397,12 @@ function populateClientTotalsSheet(clientTotalsSheet, currentFYClientTotals) {
   cropSheet(clientTotalsSheet, headers);
 }
 
-function populateReworkByTeamSheet(reworkByTeamSheet, currentFYClientTotals, roles) {
+function populateReworkByTeamSheet(
+  reworkByTeamSheet,
+  currentFYClientTotals,
+  roles,
+  reportState
+) {
   Logger.log("Populating 'Rework by Team' spreadsheet");
   Logger.log("Nearly there now!");
   const headers = [
@@ -1033,7 +1423,9 @@ function populateReworkByTeamSheet(reworkByTeamSheet, currentFYClientTotals, rol
   // Iterate through each role in the roles object
   roles.forEach((role) => {
     const teamName = role.name;
-    const totalReworkCost = totalReworkTimeByRole[teamName] ? totalReworkTimeByRole[teamName].totalReworkCost : 0;
+    const totalReworkCost = reportState.totalReworkTimeByRole[teamName]
+      ? reportState.totalReworkTimeByRole[teamName].totalReworkCost
+      : 0;
 
     // Calculate the average rework cost per person
     const teamSize = role.user_ids.length;
@@ -1054,7 +1446,9 @@ function populateReworkByTeamSheet(reworkByTeamSheet, currentFYClientTotals, rol
   reworkByTeamSheet.getRange("A1:C1").setFontWeight("bold");
 
   // Set currency format for columns B and C
-  reworkByTeamSheet.getRange("B2:C" + reworkByTeamSheet.getLastRow()).setNumberFormat("£#,##0.00");
+  reworkByTeamSheet
+    .getRange("B2:C" + reworkByTeamSheet.getLastRow())
+    .setNumberFormat("£#,##0.00");
 
   // Auto-resize columns for readability
   reworkByTeamSheet.autoResizeColumns(1, headers.length);
@@ -1063,13 +1457,14 @@ function populateReworkByTeamSheet(reworkByTeamSheet, currentFYClientTotals, rol
   cropSheet(reworkByTeamSheet, headers);
 }
 
-function populateSummarySheet(summarySheet, overBudgetData) {
+function populateSummarySheet(summarySheet, overBudgetData, reportState) {
   Logger.log("Populating 'Summary' spreadsheet");
 
   // Clear the sheet first to avoid appending to old data
   summarySheet.clear();
 
-  const introduction = "This report is filtered to projects that are either a) active b) start or end within FY c) activity within FY";
+  const introduction =
+    "This report is filtered to projects that are either a) active b) start or end within FY c) activity within FY";
   summarySheet.getRange("A1").setValue(introduction);
 
   // Get today's date in DD/MM/YYYY format
@@ -1085,65 +1480,132 @@ function populateSummarySheet(summarySheet, overBudgetData) {
 
   // Calculate totalReworkCost
   let totalReworkCost = 0;
-  for (const role in totalReworkTimeByRole) {
-    totalReworkCost += totalReworkTimeByRole[role].totalReworkCost;
+  for (const role in reportState.totalReworkTimeByRole) {
+    totalReworkCost += reportState.totalReworkTimeByRole[role].totalReworkCost;
   }
 
   // Calculate number of projects over budget using overBudgetData
-  const activeProjectsOverBudgetCount = overBudgetData.filter((item) => item.is_active).length;
+  const activeProjectsOverBudgetCount = overBudgetData.filter(
+    (item) => item.is_active
+  ).length;
 
   // Calculate active project wastage over budget
   const activeProjectWastageOverBudget = overBudgetData
     .filter((item) => item.is_active)
     .reduce((total, item) => {
       const budgetType = projectTypeRename(item.budget_by);
-      const overBudgetBy = budgetType === "£" ? Math.abs(item.budget_remaining) : Math.abs(item.budget_remaining) * defaultHourlyRate;
+      const overBudgetBy =
+        budgetType === "£"
+          ? Math.abs(item.budget_remaining)
+          : Math.abs(item.budget_remaining) * reportState.defaultHourlyRate;
       return total + overBudgetBy;
     }, 0);
 
   // Calculate number of active projects with rework logged
-  const activeProjectsWithReworkCount = overBudgetData.filter((item) => item.is_active && item.rework_role_breakdown && item.rework_role_breakdown.length > 0).length;
+  const activeProjectsWithReworkCount = overBudgetData.filter(
+    (item) =>
+      item.is_active &&
+      item.rework_role_breakdown &&
+      item.rework_role_breakdown.length > 0
+  ).length;
 
   const activeProjectsWastageRework = overBudgetData
-    .filter((item) => item.is_active && item.rework_role_breakdown && item.rework_role_breakdown.length > 0)
+    .filter(
+      (item) =>
+        item.is_active &&
+        item.rework_role_breakdown &&
+        item.rework_role_breakdown.length > 0
+    )
     .reduce((total, item) => {
-      return total + item.rework_role_breakdown.reduce((sum, role) => sum + role.totalReworkCost, 0);
+      return (
+        total +
+        item.rework_role_breakdown.reduce(
+          (sum, role) => sum + role.totalReworkCost,
+          0
+        )
+      );
     }, 0);
 
   // Calculate total overall wastage FYTD
-  const totalOverallWastageFYTD = totalCostOverBudget + totalReworkCost;
+  const totalOverallWastageFYTD =
+    reportState.totalCostOverBudget + totalReworkCost;
 
   // Add the data rows
-  summarySheet.getRange("A4").setValue("Total Wastage Over Budget £").setFontWeight("bold");
-  summarySheet.getRange("B4").setValue(totalCostOverBudget).setNumberFormat("£#,##0.00");
+  summarySheet
+    .getRange("A4")
+    .setValue("Total Wastage Over Budget £")
+    .setFontWeight("bold");
+  summarySheet
+    .getRange("B4")
+    .setValue(reportState.totalCostOverBudget)
+    .setNumberFormat("£#,##0.00");
 
-  summarySheet.getRange("A5").setValue("Active Project Over Budget # Projects").setFontWeight("bold");
+  summarySheet
+    .getRange("A5")
+    .setValue("Active Project Over Budget # Projects")
+    .setFontWeight("bold");
   summarySheet.getRange("B5").setValue(activeProjectsOverBudgetCount);
 
-  summarySheet.getRange("A6").setValue("Active Project Wastage Over Budget £").setFontWeight("bold");
-  summarySheet.getRange("B6").setValue(activeProjectWastageOverBudget).setNumberFormat("£#,##0.00");
+  summarySheet
+    .getRange("A6")
+    .setValue("Active Project Wastage Over Budget £")
+    .setFontWeight("bold");
+  summarySheet
+    .getRange("B6")
+    .setValue(activeProjectWastageOverBudget)
+    .setNumberFormat("£#,##0.00");
 
-  summarySheet.getRange("A7").setValue("Total Wastage Rework Cost £").setFontWeight("bold");
-  summarySheet.getRange("B7").setValue(totalReworkCost).setNumberFormat("£#,##0.00");
+  summarySheet
+    .getRange("A7")
+    .setValue("Total Wastage Rework Cost £")
+    .setFontWeight("bold");
+  summarySheet
+    .getRange("B7")
+    .setValue(totalReworkCost)
+    .setNumberFormat("£#,##0.00");
 
-  summarySheet.getRange("A8").setValue("Active Project Wastage Rework # Projects").setFontWeight("bold");
+  summarySheet
+    .getRange("A8")
+    .setValue("Active Project Wastage Rework # Projects")
+    .setFontWeight("bold");
   summarySheet.getRange("B8").setValue(activeProjectsWithReworkCount);
 
-  summarySheet.getRange("A9").setValue("Active Project Wastage Rework £").setFontWeight("bold");
-  summarySheet.getRange("B9").setValue(activeProjectsWastageRework).setNumberFormat("£#,##0.00");
+  summarySheet
+    .getRange("A9")
+    .setValue("Active Project Wastage Rework £")
+    .setFontWeight("bold");
+  summarySheet
+    .getRange("B9")
+    .setValue(activeProjectsWastageRework)
+    .setNumberFormat("£#,##0.00");
 
-  summarySheet.getRange("A10").setValue("Total Overall Wastage").setFontWeight("bold");
-  summarySheet.getRange("B10").setValue(totalOverallWastageFYTD).setNumberFormat("£#,##0.00");
+  summarySheet
+    .getRange("A10")
+    .setValue("Total Overall Wastage")
+    .setFontWeight("bold");
+  summarySheet
+    .getRange("B10")
+    .setValue(totalOverallWastageFYTD)
+    .setNumberFormat("£#,##0.00");
 
-  summarySheet.getRange("A11").setValue("Total Billable Hours").setFontWeight("bold");
-  summarySheet.getRange("B11").setValue(totalBillableHours);
+  summarySheet
+    .getRange("A11")
+    .setValue("Total Billable Hours")
+    .setFontWeight("bold");
+  summarySheet.getRange("B11").setValue(reportState.totalBillableHours);
 
   summarySheet.getRange("A12").setValue("Total Hours").setFontWeight("bold");
-  summarySheet.getRange("B12").setValue(totalHours);
+  summarySheet.getRange("B12").setValue(reportState.totalHours);
 
-  const aedrFromBudget = calculateAEDRFromBudget(overBudgetData);
-  summarySheet.getRange("A13").setValue("AEDR (from budget)").setFontWeight("bold");
-  summarySheet.getRange("B13").setValue(aedrFromBudget).setNumberFormat("£#,##0.00");
+  const aedrFromBudget = calculateAEDRFromBudget(overBudgetData, reportState);
+  summarySheet
+    .getRange("A13")
+    .setValue("AEDR (from budget)")
+    .setFontWeight("bold");
+  summarySheet
+    .getRange("B13")
+    .setValue(aedrFromBudget)
+    .setNumberFormat("£#,##0.00");
 
   // Auto-resize columns for readability
   summarySheet.autoResizeColumns(1, 2);
@@ -1158,7 +1620,18 @@ function populateMissingBudgetSheet(missingBudgetSheet, missingBudgetReport) {
   // Clear the sheet first to avoid appending to old data
   missingBudgetSheet.clear();
 
-  const missingBudgetHeaders = ["Job number", "Client name", "Project name", "Status", "Budgeted by", "Budget total", "Harvest Start Date", "Harvest End Date", "Link to Project in Harvest", "Total Project Hours Logged"];
+  const missingBudgetHeaders = [
+    "Job number",
+    "Client name",
+    "Project name",
+    "Status",
+    "Budgeted by",
+    "Budget total",
+    "Harvest Start Date",
+    "Harvest End Date",
+    "Link to Project in Harvest",
+    "Total Project Hours Logged",
+  ];
 
   missingBudgetSheet.appendRow(missingBudgetHeaders);
 
@@ -1171,7 +1644,10 @@ function populateMissingBudgetSheet(missingBudgetSheet, missingBudgetReport) {
     rowData[3] = item.is_active ? "Active" : "Archived";
     rowData[4] = item.budget_by || "";
     // Budget Total
-    rowData[5] = budgetType === "£" ? item.budget || 0 : (item.budget * defaultHourlyRate).toFixed(2);
+    rowData[5] =
+      budgetType === "£"
+        ? item.budget || 0
+        : (item.budget * reportState.defaultHourlyRate).toFixed(2);
     rowData[6] = item.starts_on || "";
     rowData[7] = item.ends_on || "";
     rowData[8] = harvestBaseUrl + "/projects/" + (item.id || "");
@@ -1182,21 +1658,25 @@ function populateMissingBudgetSheet(missingBudgetSheet, missingBudgetReport) {
 }
 
 // Calculate AEDR (from budget)
-function calculateAEDRFromBudget(overBudgetData) {
+function calculateAEDRFromBudget(overBudgetData, reportState) {
   let totalValueOfBilledTime = 0;
   let totalAmountOverBudget = 0;
   let totalTimeBooked = 0;
 
   overBudgetData.forEach((item) => {
     const budgetType = projectTypeRename(item.budget_by);
-    const overBudgetBy = budgetType === "£" ? Math.abs(item.budget_remaining) : Math.abs(item.budget_remaining) * defaultHourlyRate;
+    const overBudgetBy =
+      budgetType === "£"
+        ? Math.abs(item.budget_remaining)
+        : Math.abs(item.budget_remaining) * reportState.defaultHourlyRate;
 
     totalValueOfBilledTime += item.budget_spent;
     totalAmountOverBudget += overBudgetBy;
     totalTimeBooked += item.total_logged_hours;
   });
 
-  const aedr = ((totalValueOfBilledTime - totalAmountOverBudget) / totalTimeBooked) * 7.5;
+  const aedr =
+    ((totalValueOfBilledTime - totalAmountOverBudget) / totalTimeBooked) * 7.5;
   return aedr;
 }
 
@@ -1272,11 +1752,15 @@ function fetchInvoicesByProjectId(projectId) {
       // Parse the response as JSON
       const jsonResponse = JSON.parse(response.getContentText());
 
-      const projectInvoices = jsonResponse.invoices.map((invoice) => invoice.number);
+      const projectInvoices = jsonResponse.invoices.map(
+        (invoice) => invoice.number
+      );
 
       return projectInvoices;
     } catch (error) {
-      Logger.log(`Error fetching invoices for project ${projectId}: ${error.message}`);
+      Logger.log(
+        `Error fetching invoices for project ${projectId}: ${error.message}`
+      );
       // Instead of returning null, return an empty array so the rest of the code can continue.
       return [];
     }
@@ -1284,14 +1768,17 @@ function fetchInvoicesByProjectId(projectId) {
     // Use dummy data if no credentials
     const invoicesArray = getDummyinvoices();
     return invoicesArray
-      .filter(invoice => invoice.project_id === projectId)
-      .map(invoice => invoice.number);
+      .filter((invoice) => invoice.project_id === projectId)
+      .map((invoice) => invoice.number);
   }
 }
 
 function sendEmail(combinedSheetUrl) {
   const subject = "Automated Harvest Budget Report " + formattedDate;
-  const body = "Hi Everyone,\n\nPlease find the attached budget report in the Google Sheet: " + combinedSheetUrl + "\n\nAs this is an automated report, please book in any changes.";
+  const body =
+    "Hi Everyone,\n\nPlease find the attached budget report in the Google Sheet: " +
+    combinedSheetUrl +
+    "\n\nAs this is an automated report, please book in any changes.";
   MailApp.sendEmail({
     to: recipientEmail,
     subject: subject,
