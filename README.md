@@ -130,11 +130,9 @@ Set the following script properties in Google Apps Script (`File > Project prope
 
 ### Folder and Recipients
 
-- **Production/Development:**  
-  The project is now supplied with Dummy data which can be used for testing when you dont have access to a Harvest account ID opr access token.
-  You will still need to provide a Google Drive folder ID and email address which can be set in the 'Script Properties' section of the script near the top of the main 'productionScript.gs' file.   
-  The project is now supplied with Dummy data which can be used for testing when you dont have access to a Harvest account ID opr access token.
-  You will still need to provide a Google Drive folder ID and email address which can be set in the 'Script Properties' section of the script near the top of the main 'productionScript.gs' file.   
+- **Use Dummy Data:**  
+  The project is now supplied with Dummy data which can be used for testing when you dont have access to a Harvest account ID or access token.
+  You will still need to provide a Google Drive folder ID and email address which can be set in the 'Script Properties' section of the script near the top of the main 'productionScript.gs' file.    
 
 ---
 
